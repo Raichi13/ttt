@@ -8,11 +8,23 @@ import hamming_codec
 from reedsolo import RSCodec,ReedSolomonError
 import random
 from multiprocessing import Pool
+import ctypes
+
+
+# Load the shared library
+lib_hamming = ctypes.CDLL('./hamming-codec/libhamming_wrapper.so')
+
+# Specify the argument types and the return type of the encode function
+lib_hamming.encode_hamming.argtypes = [ctypes.c_uint64, ctypes.c_uint32, ctypes.c_char_p]
+lib_hamming.encode_hamming.restype = ctypes.c_uint64
+
+# Specify the argument types and the return type of the decode function
+lib_hamming.decode_hamming.argtypes = [ctypes.c_uint64, ctypes.c_uint32, ctypes.c_char_p, ctypes.c_uint32]
+lib_hamming.decode_hamming.restype = ctypes.c_uint64
+
 
 #Trit(e.g. [1,2,0,0,1,2,2,0]) → ['A','T','G','C','G','C','G','C','G','C']
 def trits_to_dna_bases(trits = Union[np.uint8,int],origin_base:str = 'A') :
-  # print(type(trits[0]))
-  # print(trits[0])
   bases:[str] = [origin_base]
   mapper = {
       'A' : {0:'G',1:'C',2:'T'},
@@ -152,13 +164,16 @@ def identify_data(splited_data:np.array,address_size:np.uint8):
 # [uint8(base = 10)] → 
 def add_humming_ecc(datas = Union[np.uint8,int],ecc_interval = 4):
   res = []
+  parity_loc_str = "DEFAULT".encode('utf-8')
   for d in datas:
     splited = [d[i:i+ecc_interval] for i in range(0, len(d), ecc_interval)]
     added_ecc = []
     for s in splited:
-      added = hamming_codec.encode(int.from_bytes(bytearray(np.array(s,dtype=np.uint8)),'big'),ecc_interval * 8)
+      # added = hamming_codec.encode(int.from_bytes(bytearray(np.array(s,dtype=np.uint8)),'big'),ecc_interval * 8)
+      added = lib_hamming.encode_hamming(int.from_bytes(bytearray(np.array(s,dtype=np.uint8)),'big'),ecc_interval * 8,parity_loc_str)
       intnized = []
-      added_ecc.append(int(added,2))
+      # added_ecc.append(int(added,2))
+      added_ecc.append(added)
     res.append(added_ecc)
   return np.array(res)
 
@@ -218,6 +233,7 @@ def decode_humming(bases:[],ecc_interval = 4,address_size = 4):
   for base in bases:
     trits.append(dna_bases_to_trits(base))
   decoded = []
+  parity_loc_str = "DEFAULT".encode('utf-8')
   for t in trits:
     # print("trits")
     # print(t)
@@ -229,9 +245,10 @@ def decode_humming(bases:[],ecc_interval = 4,address_size = 4):
         print(d)
         id_ = int(d,2)
         print("id")
-        dec = hamming_codec.decode(id_,len(d))
+        dec = lib_hamming.decode_hamming(id_,len(d),parity_loc_str,0)
+        # dec = hamming_codec.decode(id_,len(d))
         print("dec")
-        decoded_i = int(dec,2)
+        decoded_i = dec
         print(decoded_i)
         print("after decode")
         if decoded_i > 4294967295: # try catchでやるとnumpyで二重メモリ解放が起きてカーネルが落ちるためベタ書きで例外処理
@@ -240,12 +257,6 @@ def decode_humming(bases:[],ecc_interval = 4,address_size = 4):
         else :
             bi = decoded_i.to_bytes(ecc_interval,"big")
             humming_decoded.append(list(np.frombuffer(bi,dtype=np.uint8)))
-    #   try:
-    #     humming_decoded.append(list(np.frombuffer(int(hamming_codec.decode(int(d,2),len(d)),2).to_bytes(ecc_interval,"big"),dtype=np.uint8)))
-    #   except OverflowError as e:
-    #     print("exception")
-    #     humming_decoded.append([255,255,255,255])
-    # print(humming_decoded[0][3])
     small_byte_size = humming_decoded[0][3] % ecc_interval
     # # print(humming_decoded[len(humming_decoded) - 1])
     if small_byte_size != 0:
@@ -379,7 +390,7 @@ def simulate(input_data_path_:str,
         for sr in synthesis_res:
                 consensus_bases.append(build_consensus_base(sr,trim_margin_)[0])
         
-        # print(len(consensus_bases))
+        print(consensus_bases)
         if encode_type_ in [1,2,3,4]:
                 decoded_ = decode_humming(consensus_bases,ecc_param,address_size_)
         else :
@@ -403,5 +414,5 @@ def simulate(input_data_path_:str,
         return err_byte_count
 
 
-results = simulate('1k_data',4,4,2,2,0,0,0.01,4)
+results = simulate('1k_data',4,4,2,2,0,0,0.1,4)
 print(results)
