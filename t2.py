@@ -14,8 +14,8 @@ file_name = '1k_data'
 bytes_per_oligo = 32
 address_size = 4
 symbol_size = 5
-ecc_interval = 4
-miss_extension_prob = 0.01
+ecc_interval = 1
+miss_extension_prob = 0.0
 over_extension_prob = 0.0
 deletion_prob = 0.0
 molcule_num = 10
@@ -59,11 +59,14 @@ ext_simlated_data = tdt.synthesis()
 # print(ext_simlated_data)
 decoded_data_from_dna = dt.decode_with_build_consensus_base(ext_simlated_data)
 
+# print(encoded_data[0])
+# print(decoded_data_from_dna[0])
 # print("here",decoded_data_from_dna)
 # rd = RSDecoder(bytes_per_oligo,address_size,symbol_size)
 hd = HammingDecoder(bytes_per_oligo,address_size,ecc_interval)
 decoded_data = hd.decode(decoded_data_from_dna)
 # print(decoded_data_from_dna)
-
+print(he.ref[0])
+print(hd.for_error_check[0])
 ec = ErrorCounter(he.ref,hd.for_error_check)
 print(ec.count_error())
